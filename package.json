@@ -1,0 +1,54 @@
+{
+  "name": "watchout_backend",
+  "version": "1.0.0",
+  "description": "a backend for discord",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "render-start": "npm run build && npm run start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanshguptaji/watchout_backend.git"
+  },
+  "keywords": [
+    "node",
+    "chai"
+  ],
+  "author": "vansh gupta",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vanshguptaji/watchout_backend/issues"
+  },
+  "homepage": "https://github.com/vanshguptaji/watchout_backend#readme",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "bcrypt": "^5.1.1",
+    "cloudinary": "^1.41.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "google-auth-library": "^9.15.1",
+    "http": "^0.0.1-security",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.13.2",
+    "multer": "^1.4.5-lts.2",
+    "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^6.10.1",
+    "nodemon": "^3.1.10",
+    "resend": "^4.4.1",
+    "socket.io": "^4.8.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.4"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.9"
+  }
+}
