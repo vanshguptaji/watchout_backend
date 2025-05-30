@@ -84,3 +84,52 @@ export interface IUser extends mongoose.Document, IUserMethods {
     createdAt: Date;
     updatedAt: Date;
 }
+
+export interface IServer {
+  serverId: mongoose.Types.ObjectId;
+  joinedAt: Date;
+  nickname?: string;
+  roles: string[];
+}
+
+export interface IDirectMessage {
+  userId: mongoose.Types.ObjectId;
+  unreadCount: number;
+}
+
+export interface IFriend {
+  userId: mongoose.Types.ObjectId;
+  status: 'pending' | 'accepted' | 'blocked';
+  addedAt: Date;
+}
+
+export interface INotifications {
+  mentions: boolean;
+  directMessages: boolean;
+  friendRequests: boolean;
+  serverInvites: boolean;
+}
+
+export interface IUserMethods {
+  isPasswordCorrect(password: string): Promise<boolean>;
+  generateAccessToken(): string;
+  generateRefreshToken(): string;
+}
+
+export interface IUser extends mongoose.Document, IUserMethods {
+  username: string;
+  email: string;
+  password: string;
+  displayName?: string;
+  avatarUrl?: string;
+  status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
+  customStatus?: string;
+  servers: IServer[];
+  directMessages: IDirectMessage[];
+  friends: IFriend[];
+  notifications: INotifications;
+  theme: 'dark' | 'light';
+  refreshToken?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}

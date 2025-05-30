@@ -1,8 +1,8 @@
-import mongoose, { Schema, Model } from "mongoose";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import { IUser } from "../types/user.types";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import mongoose, { Model, Schema } from "mongoose";
+import { IUser } from "../types/user.types";
 dotenv.config();
 
 const userSchema = new Schema<IUser>(
@@ -21,45 +21,64 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
+      required: true,
     },
-    online: {
-      type: Boolean,
-      default: false,
+    displayName: {
+      type: String,
+      trim: true,
     },
-    followers: [
+    avatarUrl: {
+      type: String,
+      default: "", // Default avatar URL can be set here
+    },
+    status: {
+      type: String,
+      enum: ["online", "idle", "dnd", "invisible", "offline"],
+      default: "offline",
+    },
+    customStatus: {
+      type: String,
+      maxlength: 128,
+    },
+    servers: [
       {
-        userId: { type: Schema.Types.ObjectId, ref: "User" },
-        followedAt: { type: Date, default: Date.now },
+        serverId: { type: Schema.Types.ObjectId, ref: "Server" },
+        joinedAt: { type: Date, default: Date.now },
+        nickname: { type: String },
+        roles: [{ type: String }],
       },
     ],
-    following: [
+    directMessages: [
       {
         userId: { type: Schema.Types.ObjectId, ref: "User" },
+        unreadCount: { type: Number, default: 0 },
       },
     ],
+    friends: [
+      {
+        userId: { type: Schema.Types.ObjectId, ref: "User" },
+        status: {
+          type: String,
+          enum: ["pending", "accepted", "blocked"],
+          default: "pending",
+        },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
+    notifications: {
+      mentions: { type: Boolean, default: true },
+      directMessages: { type: Boolean, default: true },
+      friendRequests: { type: Boolean, default: true },
+      serverInvites: { type: Boolean, default: true },
+    },
+    theme: {
+      type: String,
+      enum: ["dark", "light"],
+      default: "dark",
+    },
     refreshToken: {
       type: String,
     },
-    role: {
-      type: String,
-      enum: ["admin", "participant"],
-      default: "participant",
-    },
-    profilePicture: {
-      type: String,
-      default: "",
-    },
-    profile: {
-      name: { type: String },
-      institution: { type: String },
-      country: { type: String },
-      avatarUrl: { type: String },
-      bio: { type: String },
-    },
-    rating: {
-      type: Number,
-      default: 1000,
-    }
   },
   { timestamps: true }
 );
@@ -72,19 +91,8 @@ userSchema.pre<IUser>("save", async function (next) {
 
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
-  if (obj.role === "admin") {
-    delete obj.rating;
-    delete obj.contestsParticipated;
-    delete obj.solvedProblems;
-  }
-  return obj;
-};
-
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  if (obj.role === "participant") {
-    delete obj.contestsCreated;
-  }
+  delete obj.password;
+  delete obj.refreshToken;
   return obj;
 };
 
@@ -96,22 +104,20 @@ userSchema.methods.isPasswordCorrect = async function (
 
 userSchema.methods.generateAccessToken = function (): string {
   const secret = process.env.ACCESS_TOKEN_SECRET;
-  // console.log(secret);
   if (!secret) {
     throw new Error("ACCESS_TOKEN_SECRET is not defined");
   }
-  //merging with main
+
   return jwt.sign(
     {
       _id: this._id,
       email: this.email,
       username: this.username,
+      role: this.role,
     },
     secret,
     {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRY
-        ? process.env.ACCESS_TOKEN_EXPIRY
-        : undefined,
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1d",
       algorithm: "HS256",
     } as jwt.SignOptions
   );
@@ -119,8 +125,6 @@ userSchema.methods.generateAccessToken = function (): string {
 
 userSchema.methods.generateRefreshToken = function (): string {
   const secret = process.env.REFRESH_TOKEN_SECRET;
-  // console.log(parseInt(process.env.REFRESH_TOKEN_EXPIRY || "0"));
-  // console.log(secret);
   if (!secret) {
     throw new Error("REFRESH_TOKEN_SECRET is not defined");
   }
@@ -131,9 +135,7 @@ userSchema.methods.generateRefreshToken = function (): string {
     },
     secret,
     {
-      expiresIn: process.env.REFRESH_TOKEN_EXPIRY
-        ? process.env.REFRESH_TOKEN_EXPIRY
-        : undefined,
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "30d",
       algorithm: "HS256",
     } as jwt.SignOptions
   );

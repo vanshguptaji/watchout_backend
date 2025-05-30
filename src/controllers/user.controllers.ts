@@ -1,15 +1,14 @@
 import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import User from "../models/user.model";
+import { IUser } from "../types/user.types";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { IUser } from "../types/user.types";
-import User from "../models/user.model";
-import { generateAccessAndRefreshTokens } from "../utils/tools.js";
-import jwt from "jsonwebtoken";
+import { getGoogleUser } from "../utils/googleAuth.js";
 import { sendOtpEmail } from "../utils/sendMail.js";
-import mongoose from "mongoose";
-import { verifyGoogleToken, getGoogleUser } from "../utils/googleAuth.js";
-import cloudinary from "../config/cloudinary";
+import { generateAccessAndRefreshTokens } from "../utils/tools.js";
 
 const otpStore = new Map<
   string,
@@ -107,7 +106,7 @@ const verifyLoginOTP = asyncHandler(async (req: Request, res: Response) => {
     otpStore.delete(email);
 
     const user = await User.findById(newUser._id).select(
-      "-password -refreshToken -contestsCreated"
+      "-password -refreshToken"
     );
 
     res
@@ -147,7 +146,7 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
     );
 
     const loggedInUser = await User.findById(user._id).select(
-      "-password -refreshToken -contestsCreated"
+      "-password -refreshToken"
     );
 
     const cookieOptions = {
@@ -176,7 +175,7 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
 
 const logoutUser = asyncHandler(async (req: Request, res: Response) => {
   await User.findByIdAndUpdate(
-    (req as any).user._id,
+    req.user?._id,
     { $set: { refreshToken: undefined } },
     { new: true }
   );
@@ -252,7 +251,7 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(400, "Old and new passwords are required");
   }
 
-  const user = (await User.findById((req as any).user._id)) as IUser | null;
+  const user = (await User.findById(req.user?._id)) as IUser | null;
   if (!user) {
     throw new ApiError(404, "User not found");
   }
@@ -384,186 +383,6 @@ const updatePassword = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, {}, "Password updated successfully"));
 });
 
-const getUserData = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as any).user._id;
-
-  const user = await User.aggregate([
-    { $match: { _id: userId } },
-    // Preserve the original contestsParticipated array
-    { $addFields: { userContestsParticipated: "$contestsParticipated" } },
-    {
-      $lookup: {
-        from: "contests",
-        localField: "contestsParticipated.contestId",
-        foreignField: "_id",
-        as: "contestsParticipated",
-      },
-    },
-    // Merge user's score and rank into each contestParticipated object
-    {
-      $addFields: {
-        contestsParticipated: {
-          $map: {
-            input: "$contestsParticipated",
-            as: "contest",
-            in: {
-              $mergeObjects: [
-                "$$contest",
-                {
-                  score: {
-                    $let: {
-                      vars: {
-                        userContest: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$userContestsParticipated",
-                                as: "uc",
-                                cond: {
-                                  $eq: ["$$uc.contestId", "$$contest._id"],
-                                },
-                              },
-                            },
-                            0,
-                          ],
-                        },
-                      },
-                      in: "$$userContest.score",
-                    },
-                  },
-                  rank: {
-                    $let: {
-                      vars: {
-                        userContest: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$userContestsParticipated",
-                                as: "uc",
-                                cond: {
-                                  $eq: ["$$uc.contestId", "$$contest._id"],
-                                },
-                              },
-                            },
-                            0,
-                          ],
-                        },
-                      },
-                      in: "$$userContest.rank",
-                    },
-                  },
-                  contestProblems: {
-                    $let: {
-                      vars: {
-                        userContest: {
-                          $arrayElemAt: [
-                            {
-                              $filter: {
-                                input: "$userContestsParticipated",
-                                as: "uc",
-                                cond: {
-                                  $eq: ["$$uc.contestId", "$$contest._id"],
-                                },
-                              },
-                            },
-                            0,
-                          ],
-                        },
-                      },
-                      in: "$$userContest.contestProblems",
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-      },
-    },
-    // Unwind contestsParticipated and contestProblems for lookup
-    {
-      $unwind: {
-        path: "$contestsParticipated",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $unwind: {
-        path: "$contestsParticipated.contestProblems",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    // Lookup problem details
-    {
-      $lookup: {
-        from: "problems",
-        localField: "contestsParticipated.contestProblems.problemId",
-        foreignField: "_id",
-        as: "contestsParticipated.contestProblems.problemDetails",
-      },
-    },
-    // Flatten problemDetails array
-    {
-      $addFields: {
-        "contestsParticipated.contestProblems.problemDetails": {
-          $arrayElemAt: [
-            "$contestsParticipated.contestProblems.problemDetails",
-            0,
-          ],
-        },
-      },
-    },
-    // Group back contestProblems
-    {
-      $group: {
-        _id: {
-          userId: "$_id",
-          contestId: "$contestsParticipated._id",
-        },
-        doc: { $first: "$$ROOT" },
-        contest: { $first: "$contestsParticipated" },
-        contestProblems: { $push: "$contestsParticipated.contestProblems" },
-      },
-    },
-    {
-      $addFields: {
-        "contest.contestProblems": "$contestProblems",
-      },
-    },
-    // Group back contestsParticipated
-    {
-      $group: {
-        _id: "$doc._id",
-        doc: { $first: "$doc" },
-        contestsParticipated: { $push: "$contest" },
-      },
-    },
-    {
-      $addFields: {
-        "doc.contestsParticipated": "$contestsParticipated",
-      },
-    },
-    {
-      $replaceRoot: { newRoot: "$doc" },
-    },
-    {
-      $project: {
-        password: 0,
-        refreshToken: 0,
-        userContestsParticipated: 0, // Hide the helper field
-      },
-    },
-  ]);
-
-  if (!user || user.length === 0) {
-    throw new ApiError(404, "User not found");
-  }
-
-  res
-    .status(200)
-    .json(new ApiResponse(200, user[0], "User data retrieved successfully"));
-});
-
 const googleLogin = asyncHandler(async (req: Request, res: Response) => {
   const idToken = req.body.idToken;
   if (!idToken) {
@@ -584,7 +403,7 @@ const googleLogin = asyncHandler(async (req: Request, res: Response) => {
     user = await User.create({
       username: name,
       email,
-      profile: { avatarUrl: picture },
+      avatarUrl: picture,
       password: "",
     });
   }
@@ -603,230 +422,473 @@ const googleLogin = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, { user, accessToken, refreshToken }, message));
 });
 
-const followAndUnfollow = asyncHandler(async (req: Request, res: Response) => {
-  //TODO:
-  //1. we will get the user profile from the request body
-  //2. identify the user in the database
-  //3. identify the user we are now about to follow
-  //4. update the followers list of the user we are about to follow
-  //5. update the following list of the user we are following from
-  //6. return the updated user profile
-
-  const userId = (req as any).user._id;
-  const userThatIsFollowing = await User.findById(userId);
-
-  const { idOfWhomWeAreFollowing } = req.body;
-  const userThatIsFollowed = await User.findById(idOfWhomWeAreFollowing);
-
-  if (!userThatIsFollowing || !userThatIsFollowed) {
+// Get user's friends list
+const getFriendsList = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?._id;
+  
+  const user = await User.findById(userId)
+    .populate({
+      path: 'friends.userId',
+      select: 'username displayName avatarUrl status customStatus'
+    });
+  
+  if (!user) {
     throw new ApiError(404, "User not found");
   }
-
-  // Check if the user is already following the target user
-  const isFollowing = userThatIsFollowing.following.includes(
-    idOfWhomWeAreFollowing
+  
+  // Sort friends by status (online first, then others)
+  const friends = user.friends.sort((a, b) => {
+    // @ts-ignore - The populated field has status
+    const statusA = a.userId?.status || 'offline';
+    // @ts-ignore - The populated field has status
+    const statusB = b.userId?.status || 'offline';
+    
+    if (statusA === 'online' && statusB !== 'online') return -1;
+    if (statusA !== 'online' && statusB === 'online') return 1;
+    return 0;
+  });
+  
+  res.status(200).json(
+    new ApiResponse(200, { friends }, "Friends list retrieved successfully")
   );
-  if (isFollowing) {
-    // If already following, unfollow the user
-    userThatIsFollowing.following = userThatIsFollowing.following.filter(
-      (id: any) => id.toString() !== idOfWhomWeAreFollowing.toString()
-    );
-    userThatIsFollowed.followers = userThatIsFollowed.followers.filter(
-      (id: any) => id.toString() !== userId.toString()
-    );
-  } else {
-    // If not following, follow the user
-    userThatIsFollowing.following.push(idOfWhomWeAreFollowing);
-    userThatIsFollowed.followers.push(userId);
-  }
-
-  await userThatIsFollowing.save();
-  await userThatIsFollowed.save();
-
-  res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { user: userThatIsFollowing },
-        isFollowing
-          ? "Unfollowed user successfully"
-          : "Followed user successfully"
-      )
-    );
 });
 
-const searchFriendByName = asyncHandler(async (req: Request, res: Response) => {
-  const { username } = req.body;
-  if (!username) {
-    throw new ApiError(400, "Username is required for search");
+// Send friend request
+const sendFriendRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { targetUserId } = req.body;
+  const userId = req.user?._id;
+  
+  if (!targetUserId) {
+    throw new ApiError(400, "Target user ID or username is required");
   }
 
-  const listOfUsers = await User.find({
-    username: { $regex: username, $options: "i" },
-  }).select("_id username profile profilePicture");
-
-  res.status(200).json(new ApiResponse(200, listOfUsers, "Users found"));
-});
-
-const suggestedUsersToFollow = asyncHandler(
-  async (req: Request, res: Response) => {
-    const userId = (req as any).user._id;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      throw new ApiError(400, "Can't identify the user");
+  if (userId?.toString() === targetUserId.toString()) {
+    throw new ApiError(400, "You cannot send a friend request to yourself");
+  }
+  
+  // Find the target user - first try by ID, then by username
+  let targetUser;
+  
+  // Check if targetUserId is a valid ObjectId
+  if (mongoose.Types.ObjectId.isValid(targetUserId)) {
+    targetUser = await User.findById(targetUserId);
+  }
+  
+  // If not found by ID or not a valid ObjectId, try by username
+  if (!targetUser) {
+    targetUser = await User.findOne({ 
+      username: { $regex: `^${targetUserId}$`, $options: 'i' } 
+    });
+  }
+  
+  if (!targetUser) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Prevent sending friend request to yourself (check again with found user)
+  if (userId?.toString() === (targetUser._id as any).toString()) {
+    throw new ApiError(400, "You cannot send a friend request to yourself");
+  }
+  
+  // Find the requesting user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Check if a friend relationship already exists
+  const existingFriendship = user.friends.find(
+    f => f.userId.toString() === targetUser._id.toString()
+  );
+  
+  if (existingFriendship) {
+    if (existingFriendship.status === 'blocked') {
+      throw new ApiError(400, "You have blocked this user");
     }
-
-    const followingIds = user.following.map((f: any) =>
-      f.userId ? f.userId.toString() : f.toString()
-    );
-    followingIds.push(userId.toString());
-
-    const suggestions = await User.find({
-      _id: { $nin: followingIds },
-    })
-      .select("username profile profilePicture followers")
-      .sort({ "followers.length": -1 })
-      .limit(10);
-
-    res
-      .status(200)
-      .json(new ApiResponse(200, suggestions, "Suggested users to follow"));
+    if (existingFriendship.status === 'accepted') {
+      throw new ApiError(400, "This user is already your friend");
+    }
+    if (existingFriendship.status === 'pending') {
+      throw new ApiError(400, "A friend request is already pending");
+    }
   }
-);
-
-const getProfileOfUser = asyncHandler(async (req: Request, res: Response) => {
-  //TODO:
-  //1. get the userId of the profile to be searching from the params
-  //2. find the user in the database
-  //3. check if the user is the same as the logged in user
-  //4. if the user is the same as the logged in user, return the user profile
-  //5. if the user is not the same as the logged in user, return the user profile without the refresh token and password
-  const searchUserId = req.params.userId;
-  const loggedInUserId = (req as any).user._id;
-  const user = await User.findById(searchUserId).select(
-    "-password -refreshToken"
+  
+  // Check if target user has blocked the requesting user
+  const targetUserBlocked = targetUser.friends.find(
+    f => f.userId.toString() === userId?.toString() && f.status === 'blocked'
   );
-
-  if (!user) {
-    throw new ApiError(404, "User not found");
+  
+  if (targetUserBlocked) {
+    throw new ApiError(403, "Cannot send friend request");
   }
-  const currentUser = await User.findById(loggedInUserId);
-  if (!currentUser) {
-    throw new ApiError(404, "User not found(unauthorized)");
-  }
-  const isSameUser = loggedInUserId.toString() === searchUserId.toString();
-  if (isSameUser) {
-    res
-      .status(200)
-      .json(new ApiResponse(200, user, "User profile retrieved successfully"));
-    return;
-  }
-  const userWithoutSensitiveData = {
-    ...user.toObject(),
-    password: undefined,
-    refreshToken: undefined,
-  };
-  res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        userWithoutSensitiveData,
-        "User profile retrieved successfully"
-      )
-    );
+  
+  // Add friend request for the requesting user
+  user.friends.push({
+    userId: targetUser._id as mongoose.Types.ObjectId,
+    status: 'pending',
+    addedAt: new Date()
+  });
+  await user.save();
+  
+  // Add pending request for the target user
+  targetUser.friends.push({
+    userId: userId as mongoose.Types.ObjectId,
+    status: 'pending',
+    addedAt: new Date()
+  });
+  await targetUser.save();
+  
+  res.status(200).json(
+    new ApiResponse(200, {}, "Friend request sent successfully")
+  );
 });
 
-const getUserById = asyncHandler(async (req: Request, res: Response) => {
-  const { userId } = req.params;
+// Respond to friend request (accept/reject)
+const respondToFriendRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { requesterId, action } = req.body;
+  const userId = req.user?._id as mongoose.Types.ObjectId;
   
-  if (!mongoose.isValidObjectId(userId)) {
-    throw new ApiError(400, "Invalid User ID format");
+  if (!requesterId || !action) {
+    throw new ApiError(400, "Requester ID and action are required");
   }
   
-  const requesterId = req.user?._id as mongoose.Types.ObjectId;
-  const requester = await User.findById(requesterId);
-  
-  if (!requester) {
-    throw new ApiError(404, "Requester not found");
+  if (action !== 'accept' && action !== 'reject') {
+    throw new ApiError(400, "Action must be either 'accept' or 'reject'");
   }
   
-  // Find the requested user with basic info
-  const user = await User.findById(userId).select(
-    "-password -refreshToken"
-  );
-  
+  // Find the current user
+  const user = await User.findById(userId);
   if (!user) {
     throw new ApiError(404, "User not found");
   }
   
-  // For admins and contest organizers, provide more detailed information
-  // For regular users, provide limited information
-  let userData;
+  // Find the requesting user
+  const requester = await User.findById(requesterId);
+  if (!requester) {
+    throw new ApiError(404, "Requesting user not found");
+  }
   
-  if (requester.role === "admin") {
-    // Admin users get full profile info except sensitive data
-    userData = {
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      profilePicture: user.profilePicture,
-      profile: user.profile,
-      rating: user.rating,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      // Include participation data but filter out unnecessary details
-      contestsParticipated: user.contestsParticipated?.map(contest => ({
-        contestId: contest.contestId,
-        rank: contest.rank,
-        score: contest.score
-      }))
-    };
+  // Check if there's a pending request from the requester
+  const requestIndex = user.friends.findIndex(
+    f => f.userId.toString() === requesterId.toString() && f.status === 'pending'
+  );
+  
+  if (requestIndex === -1) {
+    throw new ApiError(404, "No pending friend request from this user");
+  }
+  
+  // Find the matching request on the requester's side
+  const requesterRequestIndex = requester.friends.findIndex(
+    f => f.userId.toString() === userId.toString() && f.status === 'pending'
+  );
+  
+  if (action === 'accept') {
+    // Update both users' friend lists to 'accepted'
+    user.friends[requestIndex].status = 'accepted';
+    
+    if (requesterRequestIndex !== -1) {
+      requester.friends[requesterRequestIndex].status = 'accepted';
+    } else {
+      // Add the current user to requester's friends list if not present
+      requester.friends.push({
+        userId: userId,
+        status: 'accepted',
+        addedAt: new Date()
+      });
+    }
+    
+    await user.save();
+    await requester.save();
+    
+    res.status(200).json(
+      new ApiResponse(200, {}, "Friend request accepted")
+    );
   } else {
-    // Regular users see limited profile information
-    userData = {
-      _id: user._id,
-      username: user.username,
-      role: user.role,
-      profilePicture: user.profilePicture,
-      profile: {
-        name: user.profile?.name,
-        institution: user.profile?.institution,
-        country: user.profile?.country,
-        bio: user.profile?.bio
-      },
-      rating: user.rating,
-      createdAt: user.createdAt
-    };
+    // Reject: Remove the request from both users
+    user.friends.splice(requestIndex, 1);
+    
+    if (requesterRequestIndex !== -1) {
+      requester.friends.splice(requesterRequestIndex, 1);
+    }
+    
+    await user.save();
+    await requester.save();
+    
+    res.status(200).json(
+      new ApiResponse(200, {}, "Friend request rejected")
+    );
+  }
+});
+
+// Remove friend
+const removeFriend = asyncHandler(async (req: Request, res: Response) => {
+  const { friendId } = req.params;
+  const userId = req.user?._id as mongoose.Types.ObjectId;
+  
+  // Find current user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Find friend
+  const friend = await User.findById(friendId);
+  if (!friend) {
+    throw new ApiError(404, "Friend not found");
+  }
+  
+  // Check if they're friends
+  const friendIndex = user.friends.findIndex(
+    f => f.userId.toString() === friendId.toString() && f.status === 'accepted'
+  );
+  
+  if (friendIndex === -1) {
+    throw new ApiError(404, "This user is not your friend");
+  }
+  
+  // Remove friend relationship from both users
+  user.friends.splice(friendIndex, 1);
+  
+  const userFriendIndex = friend.friends.findIndex(
+    f => f.userId.toString() === userId.toString() && f.status === 'accepted'
+  );
+  
+  if (userFriendIndex !== -1) {
+    friend.friends.splice(userFriendIndex, 1);
+  }
+  
+  await user.save();
+  await friend.save();
+  
+  res.status(200).json(
+    new ApiResponse(200, {}, "Friend removed successfully")
+  );
+});
+
+// Block user
+const blockUser = asyncHandler(async (req: Request, res: Response) => {
+  const { userId: targetUserId } = req.params;
+  const userId = req.user?._id;
+  
+  if (userId?.toString() === targetUserId.toString()) {
+    throw new ApiError(400, "You cannot block yourself");
+  }
+  
+  // Find current user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Find target user
+  const targetUser = await User.findById(targetUserId);
+  if (!targetUser) {
+    throw new ApiError(404, "Target user not found");
+  }
+  
+  // Check if already blocked
+  const existingRelationship = user.friends.find(
+    f => f.userId.toString() === targetUserId.toString()
+  );
+  
+  if (existingRelationship) {
+    if (existingRelationship.status === 'blocked') {
+      throw new ApiError(400, "This user is already blocked");
+    }
+    // Update existing relationship to blocked
+    existingRelationship.status = 'blocked';
+  } else {
+    // Create new blocked relationship
+    user.friends.push({
+      userId: new mongoose.Types.ObjectId(targetUserId),
+      status: 'blocked',
+      addedAt: new Date()
+    });
+  }
+  
+  // Remove any friend relationship from target user's side
+  const targetUserRelationship = targetUser.friends.findIndex(
+    f => f.userId.toString() === userId?.toString()
+  );
+  
+  if (targetUserRelationship !== -1) {
+    targetUser.friends.splice(targetUserRelationship, 1);
+  }
+  
+  await user.save();
+  await targetUser.save();
+  
+  res.status(200).json(
+    new ApiResponse(200, {}, "User blocked successfully")
+  );
+});
+
+// Unblock user
+const unblockUser = asyncHandler(async (req: Request, res: Response) => {
+  const { userId: targetUserId } = req.params;
+  const userId = req.user?._id;
+  
+  // Find current user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Check if the user is blocked
+  const blockedIndex = user.friends.findIndex(
+    f => f.userId.toString() === targetUserId.toString() && f.status === 'blocked'
+  );
+  
+  if (blockedIndex === -1) {
+    throw new ApiError(404, "This user is not blocked");
+  }
+  
+  // Remove the blocked relationship
+  user.friends.splice(blockedIndex, 1);
+  await user.save();
+  
+  res.status(200).json(
+    new ApiResponse(200, {}, "User unblocked successfully")
+  );
+});
+
+// User profile and status updates
+const getUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?._id;
+  
+  const user = await User.findById(userId)
+    .select('-password -refreshToken');
+  
+  if (!user) {
+    throw new ApiError(404, "User not found");
   }
   
   res.status(200).json(
-    new ApiResponse(
-      200,
-      userData,
-      "User profile retrieved successfully"
-    )
+    new ApiResponse(200, { user }, "User profile retrieved successfully")
   );
 });
 
-export { 
-  registerUser,
-  loginUser, 
-  verifyLoginOTP, 
-  logoutUser, 
-  refreshAccessToken, 
-  changePassword, 
-  forgetPassword, 
-  verifyResetPasswordOTP, 
-  updatePassword, 
-  getUserData, 
+const updateUserStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { status, customStatus } = req.body;
+  const userId = req.user?._id;
+  
+  // Validate status
+  const validStatuses = ["online", "idle", "dnd", "invisible", "offline"];
+  if (status && !validStatuses.includes(status)) {
+    throw new ApiError(400, "Invalid status value");
+  }
+  
+  // Validate custom status
+  if (customStatus && customStatus.length > 128) {
+    throw new ApiError(400, "Custom status should be 128 characters or less");
+  }
+  
+  const updateData: Record<string, any> = {};
+  if (status) updateData.status = status;
+  if (customStatus !== undefined) updateData.customStatus = customStatus;
+  
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: updateData },
+    { new: true }
+  ).select('-password -refreshToken');
+  
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  res.status(200).json(
+    new ApiResponse(200, { user }, "Status updated successfully")
+  );
+});
+
+const updateUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  const { displayName, avatarUrl, theme } = req.body;
+  const userId = req.user?._id;
+  
+  const updateData: Record<string, any> = {};
+  if (displayName !== undefined) updateData.displayName = displayName;
+  if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+  if (theme !== undefined) {
+    if (theme !== 'dark' && theme !== 'light') {
+      throw new ApiError(400, "Theme must be 'dark' or 'light'");
+    }
+    updateData.theme = theme;
+  }
+  
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: updateData },
+    { new: true }
+  ).select('-password -refreshToken');
+  
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  res.status(200).json(
+    new ApiResponse(200, { user }, "Profile updated successfully")
+  );
+});
+
+// Search users by username or display name
+const searchUsers = asyncHandler(async (req: Request, res: Response) => {
+  const { query } = req.query;
+  const currentUserId = req.user?._id;
+  
+  if (!query || typeof query !== 'string') {
+    throw new ApiError(400, "Search query is required");
+  }
+  
+  if (query.length < 2) {
+    throw new ApiError(400, "Search query must be at least 2 characters");
+  }
+  
+  try {
+    // Search for users by username or display name (case-insensitive)
+    const users = await User.find({
+      $and: [
+        { _id: { $ne: currentUserId } }, // Exclude current user
+        {
+          $or: [
+            { username: { $regex: query, $options: 'i' } },
+            { displayName: { $regex: query, $options: 'i' } }
+          ]
+        }
+      ]
+    })
+    .select('username displayName avatarUrl status customStatus')
+    .limit(20); // Limit results to prevent large responses
+    
+    res.status(200).json(
+      new ApiResponse(200, { users }, "Users found successfully")
+    );
+  } catch (error) {
+    console.error("Error searching users:", error);
+    throw new ApiError(500, "Error searching users");
+  }
+});
+
+export {
+  blockUser,
+  changePassword,
+  forgetPassword,
+  getFriendsList,
+  getUserProfile,
   googleLogin,
-  getUserById,
-  followAndUnfollow,
-  searchFriendByName,
-  suggestedUsersToFollow,
-  getProfileOfUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  registerUser,
+  removeFriend,
+  respondToFriendRequest,
+  searchUsers, // Add this line
+  sendFriendRequest,
+  unblockUser,
+  updatePassword,
+  updateUserProfile,
+  updateUserStatus,
+  verifyLoginOTP,
+  verifyResetPasswordOTP
 };
+

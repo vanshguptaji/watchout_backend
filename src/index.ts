@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
+import { httpServer } from './app';
 import connectDB from './db/index';
-import { app } from './app';
 
 dotenv.config({
     path: './.env',
@@ -10,13 +10,12 @@ const port: number = parseInt(process.env.PORT || '8080');
 
 connectDB()
     .then(() => {
-        app.listen(port, () => {
+        httpServer.listen(port, () => {
             console.log('------------------------------------------------');
             console.log(`🚀 Server started successfully on port: ${port}`);
             console.log(`🔗 URL: http://localhost:${port}`);
             console.log(`✅ Database connected successfully`);
-            // console.log('------------------------------------------------');
-            // console.log('📝 API Documentation available at /api/docs');
+            console.log(`🔌 WebSocket server running`);
             console.log('⌛ Server is waiting for requests...');
             console.log('------------------------------------------------');
         });
