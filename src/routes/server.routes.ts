@@ -9,6 +9,7 @@ import {
     getServerMembers,
     getUserServers,
     joinServer,
+    joinServerByCode,
     kickMember,
     leaveServer,
     updateChannel,
@@ -18,6 +19,9 @@ import {
 import { verifyJWT } from "../middlewares/auth.middlewares.js";
 
 const router = Router();
+
+// Add this route BEFORE the /:serverId routes to avoid conflicts
+router.route("/join/:inviteCode").post(verifyJWT, joinServerByCode);
 
 // Server management routes
 router.route("/").post(verifyJWT, createServer);

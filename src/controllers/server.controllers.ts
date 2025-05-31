@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { v4 as uuidv4 } from "uuid";
 import mongoose from "mongoose";
+import { v4 as uuidv4 } from "uuid";
 import Server from "../models/server.model";
 import User from "../models/user.model";
 import { ApiError } from "../utils/ApiError.js";
@@ -793,6 +793,62 @@ const kickMember = asyncHandler(async (req: Request, res: Response) => {
   );
 });
 
+// Add this new controller method
+const joinServerByCode = asyncHandler(async (req: Request, res: Response) => {
+  const { inviteCode } = req.params;
+  const userId = req.user?._id;
+
+  if (!inviteCode) {
+    throw new ApiError(400, "Invite code is required");
+  }
+
+  // Find the server that has this invite code
+  const server = await Server.findOne({
+    "inviteCodes.code": inviteCode,
+    "inviteCodes.expiresAt": { $gt: new Date() }, // Make sure it's not expired
+    "inviteCodes.uses": { $lt: "$inviteCodes.maxUses" } // Make sure it hasn't exceeded max uses
+  });
+
+  if (!server) {
+    throw new ApiError(404, "Invalid or expired invite code");
+  }
+
+  // Check if user is already a member
+  const isAlreadyMember = server.members.some(member => 
+    member.userId.toString() === userId?.toString()
+  );
+
+  if (isAlreadyMember) {
+    throw new ApiError(400, "You are already a member of this server");
+  }
+
+  // Add user to server members
+  server.members.push({
+    userId: userId as any,
+    joinedAt: new Date(),
+    roles: []
+  });
+
+  // Increment the invite code usage
+  const inviteIndex = server.inviteCodes.findIndex(invite => invite.code === inviteCode);
+  if (inviteIndex !== -1) {
+    server.inviteCodes[inviteIndex].uses += 1;
+  }
+
+  await server.save();
+
+  // Populate the server with member details
+  const populatedServer = await Server.findById(server._id)
+    .populate('members.userId', 'username displayName avatarUrl status')
+    .populate('owner', 'username displayName avatarUrl');
+
+  res.status(200).json(
+    new ApiResponse(200, populatedServer, "Successfully joined server")
+  );
+});
+
+// Export the new function
 export {
-    createChannel, createInvite, createServer, deleteChannel, deleteServer, getServerDetails, getServerMembers, getUserServers, joinServer, kickMember, leaveServer, updateChannel, updateMemberRoles, updateServer
+  createChannel, createInvite, createServer, deleteChannel, deleteServer, getServerDetails, getServerMembers, getUserServers, joinServer, joinServerByCode, kickMember, leaveServer, updateChannel, updateMemberRoles, updateServer
 };
+
