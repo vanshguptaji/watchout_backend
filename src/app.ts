@@ -40,9 +40,10 @@ io.on("connection", (socket) => {
     socket.join(`channel:${serverId}:${channelId}`);
   });
 
-  // Join DM conversation
+  // Join DM conversation - fix the room joining
   socket.on("join-dm", (conversationId) => {
     socket.join(`dm:${conversationId}`);
+    console.log(`User joined DM room: dm:${conversationId}`);
   });
 
   // Handle typing indicator

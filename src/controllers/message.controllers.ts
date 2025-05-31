@@ -152,7 +152,9 @@ const getDMMessages = asyncHandler(async (req: Request, res: Response) => {
     .limit(parseInt(limit as string))
     .populate("sender", "username displayName avatarUrl");
   
-  // Reset unread count
+  console.log(`Found ${messages.length} messages between ${userId} and ${targetUserId}`);
+  
+  // Reset unread count for the current user
   await User.findByIdAndUpdate(userId, {
     $set: {
       "directMessages.$[dm].unreadCount": 0
@@ -240,8 +242,13 @@ const sendDirectMessage = asyncHandler(async (req: Request, res: Response) => {
     });
   }
   
-  // Emit socket event for real-time updates
+  // Emit socket event for real-time updates to both users
   io.to(`user:${recipientId}`).emit('newDirectMessage', populatedMessage);
+  io.to(`user:${userId}`).emit('newDirectMessage', populatedMessage);
+  
+  // Also emit to DM room if users are in the same room
+  io.to(`dm:${recipientId}`).emit('newDirectMessage', populatedMessage);
+  io.to(`dm:${userId}`).emit('newDirectMessage', populatedMessage);
   
   res.status(201).json(
     new ApiResponse(201, populatedMessage, "Direct message sent successfully")
@@ -566,6 +573,6 @@ const getPinnedMessages = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export {
-    addReaction, deleteMessage, editMessage, getChannelMessages, getDMMessages, getPinnedMessages, pinMessage, removeReaction, sendChannelMessage, sendDirectMessage, unpinMessage
+  addReaction, deleteMessage, editMessage, getChannelMessages, getDMMessages, getPinnedMessages, pinMessage, removeReaction, sendChannelMessage, sendDirectMessage, unpinMessage
 };
 
