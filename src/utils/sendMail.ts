@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { html } from '../../public/mail/otpMailTemplet.js';
+import { html } from '../mail/otpMailTemplet.js' 
 import dotenv from 'dotenv';
 
 dotenv.config();
