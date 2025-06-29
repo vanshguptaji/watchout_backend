@@ -2,7 +2,7 @@
   "name": "watchout_backend",
   "version": "1.0.0",
   "description": "a backend for discord",
-  "main": "index.ts",
+  "main": "dist/src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
