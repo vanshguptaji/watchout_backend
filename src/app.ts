@@ -3,9 +3,9 @@ import cors from "cors";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import messageRouter from "./routes/message.routes.js";
-import serverRouter from "./routes/server.routes.js";
-import userRouter from "./routes/user.routes.js";
+import messageRouter from "./routes/message.routes";
+import serverRouter from "./routes/server.routes";
+import userRouter from "./routes/user.routes";
 
 const app = express();
 const httpServer = createServer(app);
