@@ -4,6 +4,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import messageRouter from "./routes/message.routes";
+import profileRouter from "./routes/profile.routes";
 import serverRouter from "./routes/server.routes";
 import userRouter from "./routes/user.routes";
 
@@ -86,6 +87,7 @@ app.use(cookieParser());
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/servers", serverRouter);
 app.use("/api/v1/messages", messageRouter);
+app.use("/api/v1/profile", profileRouter);
 
 export { app, httpServer, io };
 
