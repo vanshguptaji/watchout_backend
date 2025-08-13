@@ -16,7 +16,7 @@ import {
     updateMemberRoles,
     updateServer
 } from "../controllers/server.controllers";
-import { verifyJWT } from "../middlewares/auth.middlewares.js";
+import { verifyJWT } from "../middlewares/auth.middlewares";
 
 const router = Router();
 

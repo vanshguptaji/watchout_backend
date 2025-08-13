@@ -11,8 +11,8 @@ import {
     sendChannelMessage,
     sendDirectMessage,
     unpinMessage
-} from "../controllers/message.controllers.js";
-import { verifyJWT } from "../middlewares/auth.middlewares.js";
+} from "../controllers/message.controllers";
+import { verifyJWT } from "../middlewares/auth.middlewares";
 
 const router = Router();
 

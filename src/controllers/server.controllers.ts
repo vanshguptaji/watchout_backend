@@ -3,9 +3,9 @@ import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import Server from "../models/server.model";
 import User from "../models/user.model";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { ApiError } from "../utils/ApiError";
+import { ApiResponse } from "../utils/ApiResponse";
+import { asyncHandler } from "../utils/asyncHandler";
 
 // Create a new server
 const createServer = asyncHandler(async (req: Request, res: Response) => {

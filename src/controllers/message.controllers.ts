@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
-import { io } from "../app.js";
-import Message from "../models/message.model.js";
-import Server from "../models/server.model.js";
-import User from "../models/user.model.js";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { io } from "../app";
+import Message from "../models/message.model";
+import Server from "../models/server.model";
+import User from "../models/user.model";
+import { ApiError } from "../utils/ApiError";
+import { ApiResponse } from "../utils/ApiResponse";
+import { asyncHandler } from "../utils/asyncHandler";
 
 // Server channel messages
 const getChannelMessages = asyncHandler(async (req: Request, res: Response) => {

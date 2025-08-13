@@ -3,12 +3,12 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/user.model";
 import { IUser } from "../types/user.types";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { getGoogleUser } from "../utils/googleAuth.js";
-import { sendOtpEmail } from "../utils/sendMail.js";
-import { generateAccessAndRefreshTokens } from "../utils/tools.js";
+import { ApiError } from "../utils/ApiError";
+import { ApiResponse } from "../utils/ApiResponse";
+import { asyncHandler } from "../utils/asyncHandler";
+import { getGoogleUser } from "../utils/googleAuth";
+import { sendOtpEmail } from "../utils/sendMail";
+import { generateAccessAndRefreshTokens } from "../utils/tools";
 
 const otpStore = new Map<
   string,

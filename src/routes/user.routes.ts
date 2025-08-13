@@ -19,8 +19,8 @@ import {
   updateUserStatus,
   verifyLoginOTP,
   verifyResetPasswordOTP,
-} from "../controllers/user.controllers.js";
-import { verifyJWT } from "../middlewares/auth.middlewares.js";
+} from "../controllers/user.controllers";
+import { verifyJWT } from "../middlewares/auth.middlewares";
 
 const router = Router();
 

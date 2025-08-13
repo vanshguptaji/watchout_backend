@@ -4,10 +4,9 @@
   "description": "a backend for discord",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "nodemon --watch src --ext ts,js,json --exec ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "render-start": "npm run build && npm run start"
+    "start": "node dist/index.js"
   },
   "repository": {
     "type": "git",
@@ -56,5 +55,8 @@
     "tsx": "^4.19.4",
     "typescript": "^5.0.0",
     "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/streamifier": "^0.1.2"
   }
 }
